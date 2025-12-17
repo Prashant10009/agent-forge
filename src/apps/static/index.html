@@ -1,0 +1,564 @@
+<!-- src/apps/static/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Agent Forge – Project Cockpit</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #020617;
+      color: #e5e7eb;
+      display: flex;
+      height: 100vh;
+    }
+
+    /* Sidebar */
+
+    #sidebar {
+      width: 220px;
+      border-right: 1px solid #1f2937;
+      padding: 12px;
+      background: #0b1120;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #sidebar h2 {
+      margin: 0 0 8px 0;
+      font-size: 16px;
+    }
+
+    #projects-list {
+      flex: 1;
+      overflow-y: auto;
+      border-radius: 8px;
+      padding: 4px;
+      background: #020617;
+      font-size: 14px;
+    }
+
+    .project-item {
+      padding: 6px 8px;
+      margin-bottom: 4px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .project-item:hover {
+      background: #1f2937;
+    }
+
+    .project-item.active {
+      background: #2563eb;
+      color: white;
+    }
+
+    /* Main panel */
+
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      gap: 8px;
+    }
+
+    #header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+    }
+
+    #current-project {
+      font-weight: 600;
+    }
+
+    #project-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+      margin-bottom: 4px;
+    }
+
+    #project-actions button {
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      background: #111827;
+      color: #e5e7eb;
+    }
+
+    #project-actions button:hover {
+      background: #1f2937;
+    }
+
+    #chat-log {
+      flex: 1;
+      border-radius: 8px;
+      padding: 12px;
+      background: #020617;
+      overflow-y: auto;
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+
+    .msg {
+      margin-bottom: 10px;
+    }
+    .msg-user {
+      color: #38bdf8;
+    }
+    .msg-bot {
+      color: #c4b5fd;
+    }
+
+    #input-area {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    #input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    #message-input {
+      flex: 1;
+      padding: 8px;
+      border-radius: 6px;
+      border: none;
+      outline: none;
+      resize: none;
+      font-size: 14px;
+    }
+
+    #send-btn {
+      padding: 0 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    #send-btn:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    #upload-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    #upload-btn {
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    #upload-status {
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <h2>Projects</h2>
+    <div id="projects-list">
+      <!-- Filled by JS -->
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="header">
+      <div id="current-project">No project selected (global)</div>
+      <div style="font-size: 12px; opacity: 0.8;">
+        Chat to generate code. Use actions to test and inspect.
+      </div>
+    </div>
+
+    <div id="project-actions">
+  <button id="btn-run-tests">Run tests</button>
+  <button id="btn-list-files">List files</button>
+  <button id="btn-show-tasks">Show recent tasks</button>
+  <button id="btn-run-doc-gui">Run doc_extractor GUI</button>
+</div>
+
+
+    <div id="chat-log"></div>
+
+    <div id="input-area">
+      <div id="input-row">
+        <textarea
+          id="message-input"
+          rows="2"
+          placeholder="Describe what you want. If a project is selected, I'll work inside it."
+        ></textarea>
+        <button id="send-btn">Send</button>
+      </div>
+
+      <div id="upload-row">
+        <input type="file" id="file-input" accept="image/*" />
+        <button id="upload-btn">Upload Screenshot</button>
+        <div id="upload-status"></div>
+      </div>
+    </div>
+  </div>
+
+    <script>
+    const projectsList = document.getElementById("projects-list");
+    const currentProjectLabel = document.getElementById("current-project");
+    const chatLog = document.getElementById("chat-log");
+    const input = document.getElementById("message-input");
+    const sendBtn = document.getElementById("send-btn");
+    const fileInput = document.getElementById("file-input");
+    const uploadBtn = document.getElementById("upload-btn");
+    const uploadStatus = document.getElementById("upload-status");
+
+    const btnRunTests = document.getElementById("btn-run-tests");
+    const btnListFiles = document.getElementById("btn-list-files");
+    const btnShowTasks = document.getElementById("btn-show-tasks");
+    const btnRunDocGui = document.getElementById("btn-run-doc-gui");
+
+    // State: what is currently selected in the sidebar?
+    // type = "global" | "project" | "suite"
+    let selectedProject = null;
+    let selectedProjectType = "global";
+
+    // Meta-prompt for the doc_extractor_suite
+    const DOC_SUITE_PREFIX =
+      "You are working on the **doc_extractor_suite**.\n" +
+      "The suite consists of TWO related roots that should be treated as ONE product:\n" +
+      "- BACKEND ROOT: src/projects/doc_extractor/\n" +
+      "- GUI ROOT: src/projects/doc_extractor_gui/\n\n" +
+      "When the user asks for changes, you may:\n" +
+      "- Modify backend files under src/projects/doc_extractor/ (extraction logic, JSON structure, tests),\n" +
+      "- Modify GUI files under src/projects/doc_extractor_gui/ (Streamlit UI, outputs, display),\n" +
+      "- Or both, depending on what is needed.\n\n" +
+      "Keep the public API:\n" +
+      "  import doc_extractor\n" +
+      "  result = doc_extractor.process(path)\n\n" +
+      "Result must be JSON-safe and include at least: document_type, classification_confidence, full_text, text_snippet, extracted_fields, metadata.\n\n" +
+      "User request:\n";
+
+    function appendMessage(text, who) {
+      const div = document.createElement("div");
+      div.className = `msg msg-${who}`;
+      div.textContent = (who === "user" ? "You: " : "Orchestrator: ") + text;
+      chatLog.appendChild(div);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    async function loadProjects() {
+      try {
+        const res = await fetch("/api/projects");
+        const data = await res.json();
+        projectsList.innerHTML = "";
+
+        // Normal projects from backend
+        (data.projects || []).forEach((p) => {
+          const item = document.createElement("div");
+          item.className = "project-item";
+          item.textContent = p.name;
+          item.dataset.name = p.name;
+          item.dataset.type = "project";
+          item.addEventListener("click", () =>
+            selectProject("project", p.name, item)
+          );
+          projectsList.appendChild(item);
+        });
+
+        // --- Add our logical suite: doc_extractor_suite ---
+        const suiteItem = document.createElement("div");
+        suiteItem.className = "project-item";
+        suiteItem.textContent = "doc_extractor_suite (suite)";
+        suiteItem.dataset.name = "doc_extractor_suite";
+        suiteItem.dataset.type = "suite";
+        suiteItem.addEventListener("click", () =>
+          selectProject("suite", "doc_extractor_suite", suiteItem)
+        );
+        projectsList.appendChild(suiteItem);
+      } catch (err) {
+        console.error("Failed to load projects:", err);
+      }
+    }
+
+    function selectProject(type, name, element) {
+      selectedProject = name;
+      selectedProjectType = type;
+
+      // Update CSS on sidebar items
+      [...projectsList.querySelectorAll(".project-item")].forEach((el) => {
+        el.classList.toggle("active", el === element);
+      });
+
+      if (type === "suite") {
+        currentProjectLabel.textContent = "Suite: " + name;
+        appendMessage(
+          `Switched to suite: ${name}. I will consider BOTH backend and GUI roots for your requests.`,
+          "bot"
+        );
+      } else if (type === "project") {
+        currentProjectLabel.textContent = "Project: " + name;
+        appendMessage(`Switched to project: ${name}`, "bot");
+      } else {
+        currentProjectLabel.textContent = "No project selected (global)";
+        appendMessage("Switched to global mode.", "bot");
+      }
+    }
+
+    async function sendMessage() {
+      const message = input.value.trim();
+      if (!message) return;
+
+      appendMessage(message, "user");
+      input.value = "";
+      input.focus();
+      sendBtn.disabled = true;
+
+      try {
+        let url;
+        let body;
+
+        if (selectedProjectType === "suite" &&
+            selectedProject === "doc_extractor_suite") {
+          // Suite mode: send to /chat with a meta-prefix
+          url = "/chat";
+          body = { message: DOC_SUITE_PREFIX + message };
+        } else if (selectedProjectType === "project" && selectedProject) {
+          // Normal project mode: use project-chat
+          url = "/api/project-chat";
+          body = { message, project: selectedProject };
+        } else {
+          // Global mode (no specific project)
+          url = "/chat";
+          body = { message };
+        }
+
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          appendMessage(
+            `Error ${res.status}: ${data.detail || JSON.stringify(data)}`,
+            "bot"
+          );
+        } else if (data.error) {
+          appendMessage(`Error: ${data.error}`, "bot");
+        } else {
+          appendMessage(data.reply || "No reply from orchestrator.", "bot");
+        }
+      } catch (err) {
+        appendMessage("Request failed: " + err, "bot");
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    async function uploadImage() {
+      const file = fileInput.files[0];
+      if (!file) {
+        uploadStatus.textContent = "No file selected.";
+        return;
+      }
+
+      uploadStatus.textContent = "Uploading...";
+      const formData = new FormData();
+      formData.append("file", file);
+      if (selectedProjectType === "project" && selectedProject) {
+        formData.append("project", selectedProject);
+      }
+
+      try {
+        const res = await fetch("/api/upload-image", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (data.error) {
+          uploadStatus.textContent = "Upload failed: " + data.error;
+          appendMessage("Upload failed: " + data.error, "bot");
+        } else {
+          uploadStatus.textContent = `Uploaded to ${data.path}`;
+          appendMessage(
+            `Screenshot uploaded for "${data.project}" at: ${data.path}`,
+            "bot"
+          );
+          appendMessage(
+            `Now describe what's wrong and mention the screenshot path: ${data.path}`,
+            "bot"
+          );
+        }
+      } catch (err) {
+        uploadStatus.textContent = "Upload failed.";
+        appendMessage("Upload failed: " + err, "bot");
+      }
+    }
+
+    async function runTests() {
+      if (!(selectedProjectType === "project" && selectedProject)) {
+        appendMessage("Select a concrete project first to run tests.", "bot");
+        return;
+      }
+
+      appendMessage(`Running tests for project: ${selectedProject} ...`, "bot");
+
+      try {
+        const res = await fetch("/api/run-tests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project: selectedProject }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          appendMessage(
+            `Error ${res.status}: ${data.detail || JSON.stringify(data)}`,
+            "bot"
+          );
+        } else if (data.error) {
+          appendMessage(`Error: ${data.error}`, "bot");
+        } else {
+          appendMessage(data.reply || "Tests finished.", "bot");
+        }
+      } catch (err) {
+        appendMessage("Run tests request failed: " + err, "bot");
+      }
+    }
+
+    async function listFiles() {
+      if (!(selectedProjectType === "project" && selectedProject)) {
+        appendMessage("Select a concrete project first to list files.", "bot");
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          "/api/project-files?project=" + encodeURIComponent(selectedProject)
+        );
+        const data = await res.json();
+        if (!res.ok) {
+          appendMessage(
+            `Error ${res.status}: ${data.detail || JSON.stringify(data)}`,
+            "bot"
+          );
+        } else if (data.error) {
+          appendMessage(`Error: ${data.error}`, "bot");
+        } else {
+          const files = (data.files || []).join("\n");
+          appendMessage(
+            `Files in project "${selectedProject}":\n` +
+              (files || "(no files found)"),
+            "bot"
+          );
+        }
+      } catch (err) {
+        appendMessage("List files request failed: " + err, "bot");
+      }
+    }
+
+    async function showTasks() {
+      try {
+        const query =
+          selectedProjectType === "project" && selectedProject
+            ? `/api/tasks?project=${encodeURIComponent(selectedProject)}&limit=20`
+            : "/api/tasks?limit=20";
+
+        const res = await fetch(query);
+        const data = await res.json();
+
+        const tasks = data.tasks || [];
+        if (!tasks.length) {
+          appendMessage("No recent tasks found.", "bot");
+          return;
+        }
+
+        const lines = tasks.map((t) => {
+          const id = t.id ?? "?";
+          const status = t.status ?? "?";
+          const file = t.file_path ?? "(no file)";
+          const goal = t.goal ?? "";
+          return `#${id} [${status}] ${file} :: ${goal}`;
+        });
+
+        const label =
+          selectedProjectType === "project" && selectedProject
+            ? `Recent tasks for project "${selectedProject}":`
+            : "Recent tasks (all projects):";
+
+        appendMessage(label + "\n" + lines.join("\n"), "bot");
+      } catch (err) {
+        appendMessage("Show tasks request failed: " + err, "bot");
+      }
+    }
+
+    async function runDocGui() {
+      appendMessage("Starting doc_extractor GUI (Streamlit)...", "bot");
+
+      try {
+        const res = await fetch("/api/run-doc-gui", {
+          method: "POST",
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          appendMessage(
+            `Error ${res.status}: ${data.detail || JSON.stringify(data)}`,
+            "bot"
+          );
+        } else if (data.error) {
+          appendMessage(`Error: ${data.error}`, "bot");
+        } else {
+          const url = data.url || "http://localhost:8501";
+          appendMessage(
+            `doc_extractor_gui started.\nOpen this in your browser: ${url}`,
+            "bot"
+          );
+        }
+      } catch (err) {
+        appendMessage("Run doc GUI request failed: " + err, "bot");
+      }
+    }
+
+    // Event hookups
+    sendBtn.addEventListener("click", sendMessage);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    uploadBtn.addEventListener("click", uploadImage);
+    btnRunTests.addEventListener("click", runTests);
+    btnListFiles.addEventListener("click", listFiles);
+    btnShowTasks.addEventListener("click", showTasks);
+    btnRunDocGui.addEventListener("click", runDocGui);
+
+    // Init
+    loadProjects();
+  </script>
+
+</body>
+</html>

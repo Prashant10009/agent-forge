@@ -1,0 +1,9 @@
+click
+numpy
+opencv-python
+pdf2image
+pillow
+pytesseract
+python-magic
+scikit-learn
+spacy

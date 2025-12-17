@@ -1,0 +1,19 @@
+"""
+Project dependencies for the todo app
+"""
+
+requirements = [
+    "click==8.1.3",
+    "rich==13.3.1",
+    "typer==0.9.0",
+    "sqlalchemy==2.0.15",
+    "python-dotenv==1.0.0",
+]
+
+
+def main():
+    print("\n".join(requirements))
+
+
+if __name__ == "__main__":
+    main()
